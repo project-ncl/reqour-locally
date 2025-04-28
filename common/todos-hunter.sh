@@ -22,9 +22,9 @@ function file_hunt() {
         return
     fi
 
-    cat $1 | grep -iE ".*=\s*TODO.*" > $GREP_OUT
+    cat $1 | grep -iE ".*=?\s*TODO.*" > $GREP_OUT
     if [ $? -eq 0 ]; then
-        printf "$file: ${RED}$(cat ${GREP_OUT})${NO_COLOR}\n"
+        printf "$1: ${RED}$(cat ${GREP_OUT})${NO_COLOR}\n"
         TODO_FOUND=$(( $TODO_FOUND * 0 ))
     fi
 }
