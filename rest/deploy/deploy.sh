@@ -1,5 +1,11 @@
 #!/bin/env bash
 
+readonly COMMON_TOOLS_DIR="../../common"
+readonly CONFIGURATIONS_PATH="mounts/configurations"
+readonly SECRETS_PATH="mounts/secrets"
+readonly CONFIGURATIONS_VOLUME="reqour-rest-configurations"
+readonly SECRETS_VOLUME="reqour-rest-secrets"
+
 readonly DEFAULT_COMPOSE_BACKEND="docker compose"
 readonly DEFAULT_IMAGE_TAG=reqour-rest
 readonly DEFAULT_CONTAINER_NAME=reqour-rest
@@ -9,9 +15,10 @@ readonly DEFAULT_DEPLOY_DIR="/tmp/reqour-rest/deploy"
 readonly DEFAULT_ENV_FILENAME=env-vars.conf
 readonly DEFAULT_OCI_RUNTIME=podman
 
+
 function show_usage() {
     echo
-    echo "./build.sh [OPTIONS] [ -- ] COMMAND"
+    echo "Usage: ./build.sh [OPTIONS] [ -- ] COMMAND"
     echo
     echo "OPTIONS:"
     echo "  -h, --help              Show this help usage"
@@ -26,8 +33,10 @@ function show_usage() {
     echo "  -r, --oci-runtime       OCI Runtime used when creating new volumes used by reqour-rest. Defaults to '$DEFAULT_OCI_RUNTIME'."
     echo
     echo "COMMAND:"
-    echo "  up PROFILE              Compose up (among others, creates podman volumes (if not already exist) and everything needed for the deployment (e.g. compose file, application.yaml, etc.))"
-    echo "  down                    Compose down (among others, deletes the container and the compose file, i.e., nothing except that is deleted (e.g. podman volumes))"
+    echo "  template PROFILE        Create a template (with TODOs to be changed) for the given profile."
+    echo "  import-volumes          Import all the needed deployment resources into volumes (creates the volumes if not exist)."
+    echo "  up                      Create compose file and run the container."
+    echo "  down                    Stop the container, delete the compose file."
     echo
     echo "PROFILE:"
     echo "  devel                   Development environment"
@@ -63,7 +72,7 @@ function parse_options() {
         case $1 in
             -h | --help)
                 HELP=true
-                shift
+                break
                 ;;
             -v | --verbose)
                 VERBOSE=true
@@ -90,7 +99,7 @@ function parse_options() {
                 shift 2
                 ;;
             -d | --deploy-dir)
-                DEPLOY_DIR="$2"
+                DEPLOY_DIR="${2%/}"
                 shift 2
                 ;;
             -e | --env-file)
@@ -140,9 +149,17 @@ function create_volume_if_not_exist() {
     fi
 }
 
+function import_into_volumes() {
+    readonly VOLUME_IMPORTER="${COMMON_TOOLS_DIR}/volume-importer.sh"
+    [[ "$VERBOSE" == true ]] && readonly verbose_flag=" -v" || readonly verbose_flag=""
+
+    ${VOLUME_IMPORTER}${verbose_flag} $CONFIGURATIONS_VOLUME ${DEPLOY_DIR}/${CONFIGURATIONS_PATH}
+    ${VOLUME_IMPORTER}${verbose_flag} $SECRETS_VOLUME ${DEPLOY_DIR}/${SECRETS_PATH}
+}
+
 function create_volumes_if_not_exist() {
-    create_volume_if_not_exist reqour-rest-configurations
-    create_volume_if_not_exist reqour-rest-secrets
+    create_volume_if_not_exist $CONFIGURATIONS_VOLUME
+    create_volume_if_not_exist $SECRETS_VOLUME
 }
 
 function create_deploy_dir() {
@@ -167,12 +184,17 @@ services:
     env_file:
       - $ENV_FILENAME
     volumes:
-      - source: reqour-rest-secrets
-        target: /mnt/secrets
-        type: bind
       - source: reqour-rest-configurations
         target: /mnt/configurations
-        type: bind
+        type: volume
+      - source: reqour-rest-secrets
+        target: /mnt/secrets
+        type: volume
+volumes:
+  reqour-rest-configurations:
+    external: true
+  reqour-rest-secrets:
+    external: true
 EOF
 
     echo_if_verbose "Generated compose file is: "
@@ -191,11 +213,6 @@ function generate_env_file() {
 }
 
 function create_mount() {
-    if [[ $# -ne 1 ]]; then
-        echo_if_verbose "Expecting exactly 1 argument (mount path to create if not already exist), but got: '$@'"
-        exit 1
-    fi
-
     MOUNT_PATH="$1"
 
     if [[ -e $MOUNT_PATH ]]; then
@@ -205,20 +222,9 @@ function create_mount() {
     fi
 }
 
-function create_configurations_mount() {
-    CONFIGURATIONS_PATH="mounts/configurations"
+function generate_application_yaml_file() {
     CONFIGURATIONS_MOUNT="${DEPLOY_DIR}/${CONFIGURATIONS_PATH}"
     create_mount $CONFIGURATIONS_MOUNT
-}
-
-function create_secrets_mount() {
-    SECRETS_PATH="mounts/secrets"
-    SECRETS_MOUNT="${DEPLOY_DIR}/${SECRETS_PATH}/reqour-${PROFILE}"
-    create_mount $SECRETS_MOUNT
-}
-
-function generate_application_yaml_file() {
-    create_configurations_mount
 
     APPLICATION_YAML="${CONFIGURATIONS_MOUNT}/application.yaml"
     if [[ -e $APPLICATION_YAML ]]; then
@@ -228,23 +234,45 @@ function generate_application_yaml_file() {
     fi
 }
 
-function generate_secrets() {
-    create_secrets_mount
+function copy_files_to_mount() {
+    SOURCE_DIR="$1"
+    DEST_DIR="$2"
 
-    if [[ -z $(ls -A "$SECRETS_MOUNT") ]]; then
-        echo_if_verbose "'${SECRETS_MOUNT}' is empty, generating secrets"
-        cp "${SECRETS_PATH}/"* "${SECRETS_MOUNT}"
+    if [[ -z $(ls -A "$DEST_DIR") ]]; then
+        echo_if_verbose "'${DEST_DIR}' is empty, generating secrets"
+        cp "$SOURCE_DIR"* "${DEST_DIR}"
     else
-        echo_if_verbose "'${SECRETS_MOUNT}' is not empty, skipping secrets generation"
+        echo_if_verbose "'${DEST_DIR}' is not empty, skipping secrets generation"
     fi
+}
+
+function generate_secrets() {
+    REQOUR_SECRETS_MOUNT="${DEPLOY_DIR}/${SECRETS_PATH}/reqour-${PROFILE}"
+    KAFKA_CLIENT_SECRETS_MOUNT="${DEPLOY_DIR}/${SECRETS_PATH}/kafka-client-truststore-${PROFILE}"
+    create_mount $REQOUR_SECRETS_MOUNT
+    create_mount $KAFKA_CLIENT_SECRETS_MOUNT
+
+    copy_files_to_mount "${SECRETS_PATH}/reqour-profile/" "${REQOUR_SECRETS_MOUNT}"
+    copy_files_to_mount "${SECRETS_PATH}/kafka-client-truststore-profile/" "${KAFKA_CLIENT_SECRETS_MOUNT}"
 }
 
 function generate_deployment_resources() {
     create_deploy_dir
-    generate_compose_file
     generate_env_file
     generate_application_yaml_file
     generate_secrets
+}
+
+function check_todos() {
+    echo_if_verbose "Checking whether all the TODOs are resolved..."
+    local readonly TODOS_HUNTER="${COMMON_TOOLS_DIR}/todos-hunter.sh"
+    $TODOS_HUNTER "$DEPLOY_DIR"
+    if [[ $? -eq 0 ]]; then
+        echo 2>&1 "Paste correct values for all the TODOs, and then try again"
+        exit 1
+    else
+        echo_if_verbose "All the TODOs are resolved, importing.."
+    fi
 }
 
 function compose_up() {
@@ -263,47 +291,43 @@ function compose_down() {
     popd
 }
 
-function delete_compose_file() {
-    rm "${DEPLOY_DIR}/${COMPOSE_FILE}"
+function delete_compose_file_if_exist() {
+    if [[ -e "${DEPLOY_DIR}/${COMPOSE_FILE}" ]]; then
+        rm "${DEPLOY_DIR}/${COMPOSE_FILE}"
+    fi
 }
 
 function run_subcommand() {
     echo_if_verbose "Parsing the following arguments: $@"
 
-    if [[ ! (($# -eq 2 && $1 == "up" && ($2 == "devel" || $2 == "stage" || $2 == "prod")) || ($# -eq 1 && $1 == "down")) ]]; then
-        echo 2>&1 "Expecting up PROFILE | down as arguments, got: "$@""
+    readonly COMPOSE_FILE="compose.yaml"
+
+    if [[ $# -eq 2 && $1 == "template" && ($2 == "devel" || $2 == "stage" || $2 == "prod") ]]; then
+        PROFILE=$2
+        generate_deployment_resources
+    elif [[ $# -eq 1 && $1 == "import-volumes" ]]; then
+        check_todos
+        create_volumes_if_not_exist
+        import_into_volumes
+    elif [[ $# -eq 1 && $1 == "up" ]]; then
+        generate_compose_file
+        compose_up
+    elif [[ $# -eq 1 && $1 == "down" ]]; then
+        compose_down
+        delete_compose_file_if_exist
+    else
+        show_usage
         exit 1
     fi
 
-    readonly COMPOSE_FILE="compose.yaml"
-
-    if [[ "$1" == "up" ]]; then
-        PROFILE="$2"
-        create_volumes_if_not_exist
-        generate_deployment_resources
-
-        echo_if_verbose "Checking whether all the TODOs are resolved..."
-        $TODOS_HUNTER "$DEPLOY_DIR"
-        if [[ $? -eq 0 ]]; then
-            echo 2>&1 "##############################################################"
-            echo 2>&1 "# Paste correct values for all the TODOs, and then try again #"
-            echo 2>&1 "##############################################################"
-            exit 1
-        fi
-
-        compose_up
-    else
-        compose_down
-        delete_compose_file
-    fi
 }
 
 function main() {
-    local readonly TODOS_HUNTER="../../common/todos-hunter.sh"
     parse_options "$@"
 
     if [ "$HELP" = true ]; then
         show_usage
+        exit 0
     fi
 
     run_subcommand $ARGUMENTS

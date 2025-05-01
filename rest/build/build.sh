@@ -44,7 +44,7 @@ function parse_options() {
         case $1 in
             -h | --help)
                 HELP=true
-                shift
+                break
                 ;;
             -v | --verbose)
                 VERBOSE=true
@@ -116,6 +116,7 @@ function main() {
 
     if [[ "$HELP" == true ]]; then
         show_usage
+        exit 0
     fi
 
     create_build_args_copy
