@@ -3,19 +3,20 @@
 readonly COMMON_TOOLS_DIR="../../common"
 readonly CONFIGURATIONS_PATH="mounts/configurations"
 readonly SECRETS_PATH="mounts/secrets"
-readonly CONFIGURATIONS_VOLUME="reqour-rest-configurations"
-readonly SECRETS_VOLUME="reqour-rest-secrets"
+readonly CONFIGURATIONS_VOLUME="reqour-adjuster-configurations"
+readonly SECRETS_VOLUME="reqour-adjuster-secrets"
+readonly MANIPULATORS_VOLUME="reqour-adjuster-manipulators"
+readonly ENV_VARS_TEMPLATE=env-vars.conf
 readonly REQOUR_NETWORK="reqour-network"
 
 readonly DEFAULT_COMPOSE_BACKEND="docker compose"
-readonly DEFAULT_IMAGE_TAG=reqour-rest
-readonly DEFAULT_CONTAINER_NAME=reqour-rest
+readonly DEFAULT_IMAGE_TAG=reqour-adjuster
+readonly DEFAULT_CONTAINER_NAME=reqour-adjuster
 readonly DEFAULT_PORT=8080
 readonly DEFAULT_DETACHED_MODE=true
-readonly DEFAULT_DEPLOY_DIR="/tmp/reqour-rest/deploy"
-readonly DEFAULT_ENV_FILENAME=env-vars.conf
+readonly DEFAULT_DEPLOY_DIR="/tmp/reqour/adjuster/deploy"
+readonly DEFAULT_ENV_FILENAME=$ENV_VARS_TEMPLATE
 readonly DEFAULT_OCI_RUNTIME=podman
-
 
 function show_usage() {
     echo
@@ -159,6 +160,7 @@ function import_into_volumes() {
 function create_volumes_if_not_exist() {
     create_volume_if_not_exist $CONFIGURATIONS_VOLUME
     create_volume_if_not_exist $SECRETS_VOLUME
+    create_volume_if_not_exist $MANIPULATORS_VOLUME
 }
 
 function create_network_if_not_exist() {
@@ -186,7 +188,7 @@ function generate_compose_file() {
     cat > ${COMPOSE_FILE} <<EOF
 ---
 services:
-  reqour-rest:
+  reqour-adjuster:
     container_name: $CONTAINER_NAME
     image: $IMAGE_TAG
     ports:
@@ -194,19 +196,21 @@ services:
     env_file:
       - $ENV_FILENAME
     volumes:
-      - source: reqour-rest-configurations
+      - source: reqour-adjuster-configurations
         target: /mnt/configurations
         type: volume
-      - source: reqour-rest-secrets
+      - source: reqour-adjuster-secrets
         target: /mnt/secrets
         type: volume
+      - reqour-adjuster-manipulators:/mnt/manipulators:Z
     networks:
       - $REQOUR_NETWORK
-
 volumes:
-  reqour-rest-configurations:
+  reqour-adjuster-configurations:
     external: true
-  reqour-rest-secrets:
+  reqour-adjuster-secrets:
+    external: true
+  reqour-adjuster-manipulators:
     external: true
 networks:
   ${REQOUR_NETWORK}:
@@ -223,7 +227,7 @@ function generate_env_file() {
     if [[ -e "$ENV_FILE" ]]; then
         echo_if_verbose "'$ENV_FILE' already exists, not creating anything (in case you want to create a new one, delete the previous one, or specify new location using -d/-e options)."
     else
-        cp env-vars.conf "$ENV_FILE"
+        cp "$ENV_VARS_TEMPLATE" "$ENV_FILE"
         sed -i 's|${PROFILE}|'${PROFILE}'|g' "$ENV_FILE"
     fi
 }
@@ -234,19 +238,7 @@ function create_mount() {
     if [[ -e $MOUNT_PATH ]]; then
         echo_if_verbose "'$MOUNT_PATH' already exists, not creating a new one (in case you want to create a new one, delete the previous one, or specify new location using the -d option)."
     else
-        mkdir -p "$MOUNT_PATH"
-    fi
-}
-
-function generate_application_yaml_file() {
-    CONFIGURATIONS_MOUNT="${DEPLOY_DIR}/${CONFIGURATIONS_PATH}"
-    create_mount $CONFIGURATIONS_MOUNT
-
-    APPLICATION_YAML="${CONFIGURATIONS_MOUNT}/application.yaml"
-    if [[ -e $APPLICATION_YAML ]]; then
-        echo_if_verbose "'$APPLICATION_YAML' already exists, not creating a new one (in case you want to create a new one, delete the previous one, or specify new location using the -d option)."
-    else
-        cp "${CONFIGURATIONS_PATH}/application.yaml" "$APPLICATION_YAML"
+        mkdir -p $MOUNT_PATH
     fi
 }
 
@@ -254,41 +246,44 @@ function copy_files_to_mount() {
     SOURCE_DIR="$1"
     DEST_DIR="$2"
 
-    if [[ -z $(ls -A "$DEST_DIR") ]]; then
-        echo_if_verbose "'${DEST_DIR}' is empty, generating secrets"
-        cp "$SOURCE_DIR"* "${DEST_DIR}"
-    else
-        echo_if_verbose "'${DEST_DIR}' is not empty, skipping secrets generation"
-    fi
+    for file in "${SOURCE_DIR%/}/"*; do
+        if [[ -e "${DEST_DIR%/}/${file}" ]]; then
+            echo_if_verbose "The file '"${DEST_DIR%/}/${file}"' already exists, skipping.."
+        else
+            cp "$file" "${DEST_DIR%/}/${file}"
+        fi
+    done
 }
 
-function generate_secrets() {
-    REQOUR_SECRETS_MOUNT="${DEPLOY_DIR}/${SECRETS_PATH}/reqour-${PROFILE}"
-    KAFKA_CLIENT_SECRETS_MOUNT="${DEPLOY_DIR}/${SECRETS_PATH}/kafka-client-truststore-${PROFILE}"
-    create_mount $REQOUR_SECRETS_MOUNT
-    create_mount $KAFKA_CLIENT_SECRETS_MOUNT
+function generate_configurations_mount() {
+    CONFIGURATIONS_MOUNT="${DEPLOY_DIR}/${CONFIGURATIONS_PATH}"
+    create_mount $CONFIGURATIONS_MOUNT
 
-    copy_files_to_mount "${SECRETS_PATH}/reqour-profile/" "${REQOUR_SECRETS_MOUNT}"
-    copy_files_to_mount "${SECRETS_PATH}/kafka-client-truststore-profile/" "${KAFKA_CLIENT_SECRETS_MOUNT}"
+    copy_files_to_mount "${CONFIGURATIONS_PATH}" "${DEPLOY_DIR}"
+}
+
+function generate_secrets_mount() {
+    REQOUR_SECRETS_MOUNT="${DEPLOY_DIR}/${SECRETS_PATH}/reqour-${PROFILE}"
+
+    create_mount $REQOUR_SECRETS_MOUNT
+
+    pushd "${SECRETS_PATH}/reqour-profile/"
+    copy_files_to_mount "." "${REQOUR_SECRETS_MOUNT}"
+    popd
 }
 
 function generate_deployment_resources() {
     create_deploy_dir
     generate_env_file
-    generate_application_yaml_file
-    generate_secrets
+    generate_configurations_mount
+    generate_secrets_mount
 }
 
-function check_todos() {
+function are_todos_resolved() {
     echo_if_verbose "Checking whether all the TODOs are resolved..."
     local readonly TODOS_HUNTER="${COMMON_TOOLS_DIR}/todos-hunter.sh"
-    $TODOS_HUNTER "$DEPLOY_DIR"
-    if [[ $? -eq 0 ]]; then
-        echo 2>&1 "Paste correct values for all the TODOs, and then try again"
-        exit 1
-    else
-        echo_if_verbose "All the TODOs are resolved, importing.."
-    fi
+    eval "$TODOS_HUNTER $DEPLOY_DIR"
+    return $?
 }
 
 function compose_up() {
@@ -322,7 +317,15 @@ function run_subcommand() {
         PROFILE=$2
         generate_deployment_resources
     elif [[ $# -eq 1 && $1 == "import-volumes" ]]; then
-        check_todos
+        are_todos_resolved
+        if [[ $? -eq 0 ]]; then
+            echo 2>&1 "##############################################################"
+            echo 2>&1 "# Paste correct values for all the TODOs, and then try again! #"
+            echo 2>&1 "##############################################################"
+            exit 1
+        else
+            echo_if_verbose "All the TODOs are resolved, importing.."
+        fi
         create_volumes_if_not_exist
         import_into_volumes
     elif [[ $# -eq 1 && $1 == "up" ]]; then
