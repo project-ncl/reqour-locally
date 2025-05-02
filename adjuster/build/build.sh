@@ -1,8 +1,10 @@
 #!/bin/env bash
 
+readonly PARENT_IMAGE="pnc-rhel-8-reqour-image"
+
 readonly DEFAULT_OCI_RUNTIME=podman
-readonly DEFAULT_IMAGE_TAG=reqour-rest
-readonly DEFAULT_BUILD_DIR="/tmp/reqour/rest/build"
+readonly DEFAULT_IMAGE_TAG=reqour-adjuster
+readonly DEFAULT_BUILD_DIR="/tmp/reqour/adjuster/build"
 readonly DEFAULT_BUILD_ARGS_FILE=build-args.conf
 
 function show_usage() {
@@ -30,7 +32,7 @@ function echo_if_verbose() {
 }
 
 function parse_options() {
-    echo_if_verbose "Parsing the following options: '$@'"
+    echo_if_verbose "Parsing the following options: $@"
 
     local readonly OPTIONS="$(getopt -o hvr:t:a:b: --long help,verbose,oci-runtime:,image-tag:,build-args-file:,build-dir: -n 'build.sh' -- "$@")"
     eval set -- "$OPTIONS"
@@ -90,7 +92,7 @@ function parse_options() {
 }
 
 function parse_arguments() {
-    echo_if_verbose "Parsing the following arguments: $@"
+    echo_if_verbose "Parsing the following arguments: '$@'"
 
     if [[ -z $@ || $# -ne 1 ]]; then
         echo 2>&1 "Expecting exactly a single argument - context of the build, but got: '$@'."
@@ -111,28 +113,73 @@ function create_build_args_copy() {
     fi
 }
 
+function are_todos_resolved() {
+    echo_if_verbose "Checking whether all the TODOs are resolved..."
+    eval $TODOS_HUNTER "${BUILD_DIR}/${BUILD_ARGS_FILE}"
+    return $?
+}
+
+function adjust_containerfile() {
+    search_string="image-from-config"
+    search_cmd="cat $CONTAINERFILE | grep -q $search_string"
+    echo_if_verbose "Seaching the string '$search_string' in the $CONTAINERFILE by running the command: '$search_cmd'"
+    eval "$search_cmd"
+
+    if [[ $? -eq 0 ]]; then
+        copy_cmd="cp $CONTAINERFILE $CONTAINERFILE_ORIGINAL"
+        echo_if_verbose "Going to run the command: '$copy_cmd' (in the directory: '$PWD')"
+        eval "$copy_cmd"
+        sed -i 's/'${search_string}'/'${PARENT_IMAGE}'/g' "$CONTAINERFILE"
+        if [[ "$VERBOSE" == true ]]; then
+            echo_if_verbose "Adjuster $CONTAINERFILE is:"
+            cat $CONTAINERFILE
+        fi
+    fi
+}
+
+function rollback_changes() {
+    if [[ -e $CONTAINERFILE_ORIGINAL ]]; then
+        rm $CONTAINERFILE
+        mv $CONTAINERFILE_ORIGINAL $CONTAINERFILE
+    fi
+}
+
+function build_the_image() {
+    pushd "$CONTEXT_DIR"
+
+    readonly COMMAND="${OCI_RUNTIME} build -t ${IMAGE_TAG} --build-arg-file="${BUILD_DIR}/${BUILD_ARGS_FILE}" ."
+    readonly CONTAINERFILE=Containerfile
+    readonly CONTAINERFILE_ORIGINAL="${CONTAINERFILE}-original"
+
+    adjust_containerfile
+    echo_if_verbose "Going to run a command: ${COMMAND}"
+    eval "${COMMAND}"
+    rollback_changes
+
+    popd
+}
+
 function main() {
     local readonly TODOS_HUNTER="../../common/todos-hunter.sh"
     parse_options "$@"
-    parse_arguments "$ARGUMENTS"
 
     if [[ "$HELP" == true ]]; then
         show_usage
         exit 0
     fi
 
+    parse_arguments $ARGUMENTS
     create_build_args_copy
 
-    echo_if_verbose "Checking whether all the TODOs are resolved..."
-    $TODOS_HUNTER "${BUILD_DIR}/${BUILD_ARGS_FILE}"
+    are_todos_resolved
     if [[ $? -eq 0 ]]; then
         echo 2>&1 "Paste correct values for all the TODOs, and then try again"
         exit 1
+    else
+        echo_if_verbose "All the TODOs are resolved, ready to build"
     fi
 
-    COMMAND="${OCI_RUNTIME} build -t ${IMAGE_TAG} --build-arg-file="${BUILD_DIR}/${BUILD_ARGS_FILE}" ${CONTEXT_DIR}"
-    echo_if_verbose "Going to run a command: '${COMMAND}'"
-    eval "${COMMAND}"
+    build_the_image
 }
 
 main "$@"
