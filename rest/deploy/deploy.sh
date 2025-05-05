@@ -1,19 +1,22 @@
 #!/bin/env bash
 
-readonly COMMON_TOOLS_DIR="../../common"
+readonly COMMONS_DIR="../../common"
 readonly CONFIGURATIONS_PATH="mounts/configurations"
 readonly SECRETS_PATH="mounts/secrets"
 readonly CONFIGURATIONS_VOLUME="reqour-rest-configurations"
 readonly SECRETS_VOLUME="reqour-rest-secrets"
 readonly REQOUR_NETWORK="reqour-network"
 
+. "${COMMONS_DIR}/library.sh"
+. "${COMMONS_DIR}/deploy-library.sh"
+
 readonly DEFAULT_COMPOSE_BACKEND="docker compose"
 readonly DEFAULT_IMAGE_TAG=reqour-rest
 readonly DEFAULT_CONTAINER_NAME=reqour-rest
 readonly DEFAULT_PORT=8080
 readonly DEFAULT_DETACHED_MODE=true
-readonly DEFAULT_DEPLOY_DIR="/tmp/reqour-rest/deploy"
-readonly DEFAULT_ENV_FILENAME=env-vars.conf
+readonly DEFAULT_DEPLOY_DIR="/tmp/reqour/rest/deploy"
+readonly DEFAULT_ENV_FILENAME=$ENV_VARS_TEMPLATE
 readonly DEFAULT_OCI_RUNTIME=podman
 
 
@@ -44,12 +47,6 @@ function show_usage() {
     echo "  stage                   Stage environment"
     echo "  prod                    Prod environment"
     echo
-}
-
-function echo_if_verbose() {
-    if [[ "$VERBOSE" == true ]]; then
-        echo "$@"
-    fi
 }
 
 function parse_options() {
@@ -138,49 +135,6 @@ function parse_options() {
     ARGUMENTS="$@"
 }
 
-function create_volume_if_not_exist() {
-    $OCI_RUNTIME volume ls | grep -q $1
-    if [[ $? -eq 0 ]]; then
-        echo_if_verbose "Volume '$1' already exists, not creating anything."
-    else
-        echo_if_verbose "Creating $OCI_RUNTIME volume '$1'"
-        $OCI_RUNTIME volume create $1
-    fi
-}
-
-function import_into_volumes() {
-    readonly VOLUME_IMPORTER="${COMMON_TOOLS_DIR}/volume-importer.sh"
-    [[ "$VERBOSE" == true ]] && readonly verbose_flag=" -v" || readonly verbose_flag=""
-
-    ${VOLUME_IMPORTER}${verbose_flag} $CONFIGURATIONS_VOLUME ${DEPLOY_DIR}/${CONFIGURATIONS_PATH}
-    ${VOLUME_IMPORTER}${verbose_flag} $SECRETS_VOLUME ${DEPLOY_DIR}/${SECRETS_PATH}
-}
-
-function create_volumes_if_not_exist() {
-    create_volume_if_not_exist $CONFIGURATIONS_VOLUME
-    create_volume_if_not_exist $SECRETS_VOLUME
-}
-
-function create_network_if_not_exist() {
-    NETWORK=$1
-    $OCI_RUNTIME network ls | grep -q $NETWORK
-    if [[ $? -eq 0 ]]; then
-        echo_if_verbose "Network '$NETWORK' already exists, not creating anything."
-    else
-        echo_if_verbose "Creating $OCI_RUNTIME network '$NETWORK'"
-        $OCI_RUNTIME network create $NETWORK
-    fi
-}
-
-function create_deploy_dir() {
-    if [[ -e $DEPLOY_DIR ]]; then
-        echo_if_verbose "Deploy directory '$DEPLOY_DIR' already exists, not creating anything (in case you want to create a new one, either delete the current one, or specify new deploy directory as an -d/--deploy-dir option)."
-    else
-        echo_if_verbose "Creating the deploy dir: $DEPLOY_DIR"
-        mkdir -p "$DEPLOY_DIR"
-    fi
-}
-
 function generate_compose_file() {
     pushd "$DEPLOY_DIR"
     cat > ${COMPOSE_FILE} <<EOF
@@ -194,22 +148,22 @@ services:
     env_file:
       - $ENV_FILENAME
     volumes:
-      - source: reqour-rest-configurations
+      - source: $CONFIGURATIONS_VOLUME
         target: /mnt/configurations
         type: volume
-      - source: reqour-rest-secrets
+      - source: $SECRETS_VOLUME
         target: /mnt/secrets
         type: volume
     networks:
       - $REQOUR_NETWORK
 
 volumes:
-  reqour-rest-configurations:
+  $CONFIGURATIONS_VOLUME:
     external: true
-  reqour-rest-secrets:
+  $SECRETS_VOLUME:
     external: true
 networks:
-  ${REQOUR_NETWORK}:
+  $REQOUR_NETWORK:
     external: true
 EOF
 
@@ -218,53 +172,16 @@ EOF
     popd
 }
 
-function generate_env_file() {
-    ENV_FILE="${DEPLOY_DIR}/${ENV_FILENAME}"
-    if [[ -e "$ENV_FILE" ]]; then
-        echo_if_verbose "'$ENV_FILE' already exists, not creating anything (in case you want to create a new one, delete the previous one, or specify new location using -d/-e options)."
-    else
-        cp env-vars.conf "$ENV_FILE"
-        sed -i 's|${PROFILE}|'${PROFILE}'|g' "$ENV_FILE"
-    fi
-}
-
-function create_mount() {
-    MOUNT_PATH="$1"
-
-    if [[ -e $MOUNT_PATH ]]; then
-        echo_if_verbose "'$MOUNT_PATH' already exists, not creating a new one (in case you want to create a new one, delete the previous one, or specify new location using the -d option)."
-    else
-        mkdir -p "$MOUNT_PATH"
-    fi
-}
-
-function generate_application_yaml_file() {
+function generate_configurations() {
     CONFIGURATIONS_MOUNT="${DEPLOY_DIR}/${CONFIGURATIONS_PATH}"
     create_mount $CONFIGURATIONS_MOUNT
-
-    APPLICATION_YAML="${CONFIGURATIONS_MOUNT}/application.yaml"
-    if [[ -e $APPLICATION_YAML ]]; then
-        echo_if_verbose "'$APPLICATION_YAML' already exists, not creating a new one (in case you want to create a new one, delete the previous one, or specify new location using the -d option)."
-    else
-        cp "${CONFIGURATIONS_PATH}/application.yaml" "$APPLICATION_YAML"
-    fi
-}
-
-function copy_files_to_mount() {
-    SOURCE_DIR="$1"
-    DEST_DIR="$2"
-
-    if [[ -z $(ls -A "$DEST_DIR") ]]; then
-        echo_if_verbose "'${DEST_DIR}' is empty, generating secrets"
-        cp "$SOURCE_DIR"* "${DEST_DIR}"
-    else
-        echo_if_verbose "'${DEST_DIR}' is not empty, skipping secrets generation"
-    fi
+    copy_files_to_mount ${CONFIGURATIONS_PATH} ${CONFIGURATIONS_MOUNT}
 }
 
 function generate_secrets() {
     REQOUR_SECRETS_MOUNT="${DEPLOY_DIR}/${SECRETS_PATH}/reqour-${PROFILE}"
     KAFKA_CLIENT_SECRETS_MOUNT="${DEPLOY_DIR}/${SECRETS_PATH}/kafka-client-truststore-${PROFILE}"
+
     create_mount $REQOUR_SECRETS_MOUNT
     create_mount $KAFKA_CLIENT_SECRETS_MOUNT
 
@@ -275,42 +192,28 @@ function generate_secrets() {
 function generate_deployment_resources() {
     create_deploy_dir
     generate_env_file
-    generate_application_yaml_file
+    generate_configurations
     generate_secrets
 }
 
-function check_todos() {
+function are_todos_resolved() {
     echo_if_verbose "Checking whether all the TODOs are resolved..."
-    local readonly TODOS_HUNTER="${COMMON_TOOLS_DIR}/todos-hunter.sh"
-    $TODOS_HUNTER "$DEPLOY_DIR"
-    if [[ $? -eq 0 ]]; then
-        echo 2>&1 "Paste correct values for all the TODOs, and then try again"
-        exit 1
-    else
-        echo_if_verbose "All the TODOs are resolved, importing.."
-    fi
+    local readonly TODOS_HUNTER="${COMMONS_DIR}/todos-hunter.sh"
+    eval "$TODOS_HUNTER $DEPLOY_DIR"
+    return $?
 }
 
-function compose_up() {
-    local readonly compose_up_cmd="$COMPOSE_BACKEND up --detach=${DETACHED_MODE}"
-    echo_if_verbose "Going to run a command: $compose_up_cmd"
-    pushd "$DEPLOY_DIR"
-    ${compose_up_cmd}
-    popd
+function create_volumes_if_not_exist() {
+    create_volume_if_not_exist $CONFIGURATIONS_VOLUME
+    create_volume_if_not_exist $SECRETS_VOLUME
 }
 
-function compose_down() {
-    local readonly compose_down_cmd="$COMPOSE_BACKEND down"
-    echo_if_verbose "Going to run a command: $compose_down_cmd"
-    pushd "$DEPLOY_DIR"
-    ${compose_down_cmd}
-    popd
-}
+function import_into_volumes() {
+    readonly VOLUME_IMPORTER="${COMMONS_DIR}/volume-importer.sh"
+    [[ "$VERBOSE" == true ]] && readonly verbose_flag=" -v" || readonly verbose_flag=""
 
-function delete_compose_file_if_exist() {
-    if [[ -e "${DEPLOY_DIR}/${COMPOSE_FILE}" ]]; then
-        rm "${DEPLOY_DIR}/${COMPOSE_FILE}"
-    fi
+    ${VOLUME_IMPORTER}${verbose_flag} $CONFIGURATIONS_VOLUME ${DEPLOY_DIR}/${CONFIGURATIONS_PATH}
+    ${VOLUME_IMPORTER}${verbose_flag} $SECRETS_VOLUME ${DEPLOY_DIR}/${SECRETS_PATH}
 }
 
 function run_subcommand() {
@@ -322,7 +225,15 @@ function run_subcommand() {
         PROFILE=$2
         generate_deployment_resources
     elif [[ $# -eq 1 && $1 == "import-volumes" ]]; then
-        check_todos
+        are_todos_resolved
+        if [[ $? -eq 0 ]]; then
+            echo 2>&1 "###############################################################"
+            echo 2>&1 "# Paste correct values for all the TODOs, and then try again! #"
+            echo 2>&1 "###############################################################"
+            exit 1
+        else
+            echo_if_verbose "All the TODOs are resolved, importing.."
+        fi
         create_volumes_if_not_exist
         import_into_volumes
     elif [[ $# -eq 1 && $1 == "up" ]]; then

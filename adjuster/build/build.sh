@@ -1,11 +1,15 @@
 #!/bin/env bash
 
 readonly PARENT_IMAGE="pnc-rhel-8-reqour-image"
+readonly COMMONS_DIR="../../common"
+
+. "${COMMONS_DIR}/library.sh"
+. "${COMMONS_DIR}/build-library.sh"
 
 readonly DEFAULT_OCI_RUNTIME=podman
 readonly DEFAULT_IMAGE_TAG=reqour-adjuster
 readonly DEFAULT_BUILD_DIR="/tmp/reqour/adjuster/build"
-readonly DEFAULT_BUILD_ARGS_FILE=build-args.conf
+readonly DEFAULT_BUILD_ARGS_FILE=$TEMPLATE_BUILD_ARGS_FILE
 
 function show_usage() {
     echo
@@ -23,12 +27,6 @@ function show_usage() {
     echo "ARGUMENTS:"
     echo "  1                       Context directory for the build"
     echo
-}
-
-function echo_if_verbose() {
-    if [[ "$VERBOSE" == true ]]; then
-        echo "$@"
-    fi
 }
 
 function parse_options() {
@@ -84,9 +82,9 @@ function parse_options() {
 
     echo_if_verbose "Parsing of options successfully ended, the following options will be used:"
     echo_if_verbose "   OCI runtime: '$OCI_RUNTIME'"
-    echo_if_verbose "   image tag: '$IMAGE_TAG'"
-    echo_if_verbose "   build args file: '$BUILD_ARGS_FILE'"
-    echo_if_verbose "   build directory: '$BUILD_DIR'"
+    echo_if_verbose "   Image Tag: '$IMAGE_TAG'"
+    echo_if_verbose "   Build Args File: '$BUILD_ARGS_FILE'"
+    echo_if_verbose "   Build Directory: '$BUILD_DIR'"
 
     ARGUMENTS="$@"
 }
@@ -101,16 +99,6 @@ function parse_arguments() {
     fi
 
     readonly CONTEXT_DIR="$1"
-}
-
-function create_build_args_copy() {
-    if [[ ! -e "${BUILD_DIR}/${BUILD_ARGS_FILE}" ]]; then
-        if [[ ! -e $BUILD_DIR ]]; then
-            echo_if_verbose "Creating the directory: $BUILD_DIR"
-            mkdir -p "$BUILD_DIR"
-        fi
-        cp build-args.conf "${BUILD_DIR}/${BUILD_ARGS_FILE}"
-    fi
 }
 
 function are_todos_resolved() {
@@ -160,7 +148,7 @@ function build_the_image() {
 }
 
 function main() {
-    local readonly TODOS_HUNTER="../../common/todos-hunter.sh"
+    local readonly TODOS_HUNTER="${COMMONS_DIR}/todos-hunter.sh"
     parse_options "$@"
 
     if [[ "$HELP" == true ]]; then
@@ -169,11 +157,13 @@ function main() {
     fi
 
     parse_arguments $ARGUMENTS
-    create_build_args_copy
+    create_build_args_copy $BUILD_DIR $BUILD_ARGS_FILE
 
     are_todos_resolved
     if [[ $? -eq 0 ]]; then
-        echo 2>&1 "Paste correct values for all the TODOs, and then try again"
+        echo 2>&1 "###############################################################"
+        echo 2>&1 "# Paste correct values for all the TODOs, and then try again! #"
+        echo 2>&1 "###############################################################"
         exit 1
     else
         echo_if_verbose "All the TODOs are resolved, ready to build"
