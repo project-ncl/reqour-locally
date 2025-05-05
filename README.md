@@ -10,7 +10,7 @@ Reqour consists of the 2 main components:
 - **reqour-rest**
   - contains endpoint handler implementations
   - handles all the requests itself (e.g. `POST /internal-scm`), but `POST /adjust`
-  - when alignment request comes, reqour-rest only creates spawns a new reqour-adjuster pod, properly configures it, and newly created adjuster pod executes all the remaining stuff (e.g. running a manipulator process inside of it)
+  - when alignment request comes, reqour-rest only spawns a new reqour-adjuster pod, properly configures it, and newly created adjuster pod executes all the remaining stuff (e.g. running a manipulator process inside of it)
 - **reqour-adjuster**
   - CLI app which executes the whole alignment process
 
@@ -23,7 +23,7 @@ Reqour consists of the 2 main components:
 - local run is executed through an OCI Runtime, e.g. Podman
 
 ### Why OCI container, and not just `quarkus dev`?
-- reqour-rest could be easily run as `quarkus dev`, but running reqour-adjuster locally would require tools to run alignment in the host OS (e.g. several versions of Gradle), which would significantly complicate the process, since anyone who wishes to run reqour locally would need to intsall and maintain several versions of these tools
+- reqour-rest could be easily run as `quarkus dev`, but running reqour-adjuster locally would require tools to run alignment in the host OS (e.g. several versions of Gradle), which would significantly complicate the process, since anyone who wishes to run reqour locally would need to install and maintain several versions of these tools
 - because of the above, OCI container approach is used, which requires only OCI Runtime and compose tool (e.g. docker compose) to successfully run both reqour-rest and reqour-adjuster
 - **Note:** since there is a need to run reqour-adjuster using OCI Runtime, in order to make it consistent, this approach is used for reqour-rest as well
 
@@ -49,9 +49,9 @@ Reqour consists of the 2 main components:
       - e.g. mount with configurations (`application.yaml`) or secrets
 
 ---
-- the same holds also for reqour-rest component
 
-- `rest`
+- the same holds also for reqour-rest component under `rest/`:
+- `rest/`
     - `build/`
         - `build.sh`
         - `build-args.conf`
@@ -61,6 +61,7 @@ Reqour consists of the 2 main components:
         - `mounts/`
 
 ---
+
 - finally, common functions reused between both components are placed under `common/`:
 
 - `common/`
@@ -115,9 +116,9 @@ $ ./build.sh -v ~/repos/pnc-mpp/reqour-image
 REQOUR_URL=TODO # Paste Reqour URL, e.g. that one of the latest successful build at Jenkins
 ```
 you have to provide the correct value, and only then you will be able to continue
-- **❗Note:** you do change this value inside the generated file in `--build-dir` (by default, `/tmp/reqour/rest/build`), **NOT** in the `build-args.conf` located in this repository, this has 2 reasons:
+- **❗Note:** you do change this value inside the generated file in `--build-dir`, **NOT** in the `build-args.conf` located in this repository, this has 2 reasons:
   1) files in this repository are just templates, they are not used by OCI Runtime during build, those in `--build-dir` are
-  2) you do not want to provide real values in this repository, since you are risking the change of unintentionally commit these values, which is definitely unwanted and introduces a security vulnerability
+  2) you do not want to provide real values in this repository, since you are risking the chance of unintentional committing of these values, which is definitely unwanted, and introduces a security vulnerability
  
 - once the value is provided, you re-run the script again, your image should be successfully built (by default, it will be tagged `localhost/reqour-rest:latest`), so feel free to double-check e.g. by running:
 ```shell
@@ -215,12 +216,17 @@ $ ./deploy.sh import-volumes
 - creates the compose file in the `--deploy-dir`, and then runs `docker compose up -d` (by default, you can override it using the `--compose-backend` or `--detach` options)
   - you can see the content of the compose file when using the `--verbose` flag
 
-#### Adjuster's Command `up`
+#### ❗ Adjuster's Command `up` ❗
 - here the only difference which needs to be done compared to adjuster: when executing the `up` command, you need to also specify the following environment variables:
   - `BUILD_TYPE`
     - [build type](https://github.com/project-ncl/pnc-api/blob/master/src/main/java/org/jboss/pnc/api/enums/BuildType.java), valid values are: `MVN`, `GRADLE`, `NPM`, or `SBT`
   - `ADJUST_REQUEST`
     - [adjust request](https://github.com/project-ncl/pnc-api/blob/master/src/main/java/org/jboss/pnc/api/reqour/dto/AdjustRequest.java) in JSON format as defined in PNC API
+- example run is:
+```shell
+BUILD_TYPE=MVN ADJUST_REQUEST="$(cat ~/Documents/adjust/mvn-request.json)" ./deploy.sh -v up
+```
 
 ### Command `down`
 - stops and removes the container
+- deletes the previously generated `compose.yaml` too
