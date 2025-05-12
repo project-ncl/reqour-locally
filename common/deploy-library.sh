@@ -80,7 +80,12 @@ function run_compose_cmd() {
 }
 
 function compose_up() {
-    run_compose_cmd "$COMPOSE_BACKEND up --detach=${DETACHED_MODE}"
+    if [[ $DETACHED_MODE == 'true' ]]; then
+        # cannot use --detach=$DETACHED_MODE, since podman-compose supports only -d/--detach when one wants to run in detached mode
+        run_compose_cmd "$COMPOSE_BACKEND up --detach"
+    else
+        run_compose_cmd "$COMPOSE_BACKEND up"
+    fi
 }
 
 function compose_down() {

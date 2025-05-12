@@ -50,7 +50,7 @@ function show_usage() {
 }
 
 function parse_options() {
-    local readonly OPTIONS="$(getopt -o hvc:t:p:m:d:e:r: --long help,verbose,container-name:,image-tag:,port:,--detach,deploy-dir:,env-file:,oci-runtime: -n 'deploy.sh' -- "$@")"
+    local readonly OPTIONS="$(getopt -o hvt:b:c:p:m:d:e:r: --long help,verbose,image-tag:,compose-backend:,container-name:,port:,detach:,deploy-dir:,env-file:,oci-runtime: -n 'deploy.sh' -- "$@")"
     eval set -- "$OPTIONS"
 
     HELP=false
@@ -74,12 +74,12 @@ function parse_options() {
                 VERBOSE=true
                 shift
                 ;;
-            -b | --compose-backend)
-                COMPOSE_BACKEND="$2"
-                shift 2
-                ;;
             -t | --image-tag)
                 IMAGE_TAG="$2"
+                shift 2
+                ;;
+            -b | --compose-backend)
+                COMPOSE_BACKEND="$2"
                 shift 2
                 ;;
             -c | --container-name)

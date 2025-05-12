@@ -64,7 +64,7 @@ function parse_options() {
                 shift 2
                 ;;
             -b | --build-dir)
-                BUILD_DIR="$2"
+                BUILD_DIR="${2%/}"
                 shift 2
                 ;;
             --)
