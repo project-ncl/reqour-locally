@@ -121,7 +121,7 @@ function main() {
         exit 1
     fi
 
-    COMMAND="${OCI_RUNTIME} build -t ${IMAGE_TAG} --build-arg-file="${BUILD_DIR}/${BUILD_ARGS_FILE}" ${CONTEXT_DIR}"
+    COMMAND="${OCI_RUNTIME} build --no-cache -t ${IMAGE_TAG} --build-arg-file="${BUILD_DIR}/${BUILD_ARGS_FILE}" ${CONTEXT_DIR}"
     echo_if_verbose "Going to run a command: '${COMMAND}'"
     eval "${COMMAND}"
 }

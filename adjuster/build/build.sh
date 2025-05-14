@@ -135,7 +135,7 @@ function rollback_changes() {
 function build_the_image() {
     pushd "$CONTEXT_DIR"
 
-    readonly COMMAND="${OCI_RUNTIME} build -t ${IMAGE_TAG} --build-arg-file="${BUILD_DIR}/${BUILD_ARGS_FILE}" ."
+    readonly COMMAND="${OCI_RUNTIME} build --no-cache -t ${IMAGE_TAG} --build-arg-file="${BUILD_DIR}/${BUILD_ARGS_FILE}" ."
     readonly CONTAINERFILE=Containerfile
     readonly CONTAINERFILE_ORIGINAL="${CONTAINERFILE}-original"
 
