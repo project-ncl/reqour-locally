@@ -35,6 +35,7 @@ function show_usage() {
     echo "  -d, --deploy-dir        Deployment directory containing all the necessary resources, e.g. compose.yaml. Defaults to '$DEFAULT_DEPLOY_DIR'."
     echo "  -e, --env-filename      Environment variables filename within the deploy directory. Defaults to '$DEFAULT_ENV_FILENAME'."
     echo "  -r, --oci-runtime       OCI Runtime used when creating new volumes used by reqour-rest. Defaults to '$DEFAULT_OCI_RUNTIME'."
+    echo "  -l, --local-jar         Location of the local JAR you want mount to the volume. This can be useful in case you want to try your locally freshly built local JAR."
     echo
     echo "COMMAND:"
     echo "  template PROFILE        Create a template (with TODOs to be changed) for the given profile."
@@ -50,7 +51,7 @@ function show_usage() {
 }
 
 function parse_options() {
-    local readonly OPTIONS="$(getopt -o hvc:t:p:m:d:e:r: --long help,verbose,container-name:,image-tag:,port:,--detach,deploy-dir:,env-file:,oci-runtime: -n 'deploy.sh' -- "$@")"
+    local readonly OPTIONS="$(getopt -o hvc:t:p:m:d:e:r:l: --long help,verbose,container-name:,image-tag:,port:,--detach,deploy-dir:,env-file:,oci-runtime:,local-jar: -n 'deploy.sh' -- "$@")"
     eval set -- "$OPTIONS"
 
     HELP=false
@@ -110,6 +111,10 @@ function parse_options() {
                 OCI_RUNTIME="$2"
                 shift 2
                 ;;
+            -l | --local-jar)
+                LOCAL_JAR="$2"
+                shift 2
+                ;;
             --)
                 shift
                 break
@@ -131,6 +136,9 @@ function parse_options() {
     echo_if_verbose "   Deployment directory: '$DEPLOY_DIR'"
     echo_if_verbose "   Environment variables file: '$ENV_FILENAME'"
     echo_if_verbose "   OCI Runtime: '$OCI_RUNTIME'"
+    if [[ -n $LOCAL_JAR ]]; then
+        echo_if_verbose "   Local JAR: '$LOCAL_JAR'"
+    fi
 
     ARGUMENTS="$@"
 }
@@ -179,6 +187,10 @@ function import_into_volumes() {
 
 function generate_compose_file() {
     pushd "$DEPLOY_DIR"
+    if [[ -n $LOCAL_JAR ]]; then
+        readonly local_jar_mounting="      - ${LOCAL_JAR}:/opt/reqour/reqour-adjuster-runner.jar:ro,Z"
+    fi
+
     cat > ${COMPOSE_FILE} <<EOF
 ---
 services:
@@ -197,6 +209,7 @@ services:
         target: /mnt/secrets
         type: volume
       - ${MANIPULATORS_VOLUME}:/mnt/manipulators:Z
+${local_jar_mounting}
     networks:
       - $REQOUR_NETWORK
 volumes:

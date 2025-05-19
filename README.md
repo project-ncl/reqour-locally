@@ -84,7 +84,7 @@ Reqour consists of the 2 main components:
 - self-explanatory way on how to build is to look at `build.sh`'s help:
 
 ```shell
-$ ./build.sh -h                                       
+$ ./build.sh -h
 
 Usage: ./build.sh [OPTIONS] [ -- ] ARGUMENTS
 
@@ -119,7 +119,7 @@ you have to provide the correct value, and only then you will be able to continu
 - **❗Note:** you do change this value inside the generated file in `--build-dir`, **NOT** in the `build-args.conf` located in this repository, this has 2 reasons:
   1) files in this repository are just templates, they are not used by OCI Runtime during build, those in `--build-dir` are
   2) you do not want to provide real values in this repository, since you are risking the chance of unintentional committing of these values, which is definitely unwanted, and introduces a security vulnerability
- 
+
 - once the value is provided, you re-run the script again, your image should be successfully built (by default, it will be tagged `localhost/reqour-rest:latest`), so feel free to double-check e.g. by running:
 ```shell
 podman images | grep reqour-rest
@@ -131,7 +131,7 @@ podman images | grep reqour-rest
 ```shell
 $ ./deploy.sh -h
 
-Usage: ./build.sh [OPTIONS] [ -- ] COMMAND
+Usage: ./deploy.sh [OPTIONS] [ -- ] COMMAND
 
 OPTIONS:
   -h, --help              Show this help usage
@@ -144,6 +144,7 @@ OPTIONS:
   -d, --deploy-dir        Deployment directory containing all the necessary resources, e.g. compose.yaml. Defaults to '/tmp/reqour/rest/deploy'.
   -e, --env-filename      Environment variables filename within the deploy directory. Defaults to 'env-vars.conf'.
   -r, --oci-runtime       OCI Runtime used when creating new volumes used by reqour-rest. Defaults to 'podman'.
+  -l, --local-jar         Location of the local JAR you want mount to the volume. This can be useful in case you want to try your locally freshly built local JAR.
 
 COMMAND:
   template PROFILE        Create a template (with TODOs to be changed) for the given profile.
