@@ -146,7 +146,9 @@ function parse_options() {
 function generate_configurations_mount() {
     CONFIGURATIONS_MOUNT="${DEPLOY_DIR}/${CONFIGURATIONS_PATH}"
     create_mount $CONFIGURATIONS_MOUNT
-    copy_files_to_mount "${CONFIGURATIONS_PATH}" "${DEPLOY_DIR}"
+    pushd "${CONFIGURATIONS_PATH}"
+    copy_files_to_mount "." "${CONFIGURATIONS_MOUNT}"
+    popd
 }
 
 function generate_secrets_mount() {
