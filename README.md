@@ -231,3 +231,12 @@ BUILD_TYPE=MVN ADJUST_REQUEST="$(cat ~/Documents/adjust/mvn-request.json)" ./dep
 ### Command `down`
 - stops and removes the container
 - deletes the previously generated `compose.yaml` too
+
+---
+
+## Tips
+
+### Building the image for several environments
+- in case you want to "mirror" builds from several environments (devel, stage, prod), it might come handy to define separate build argument files for these, e.g. `build-args-{env}.conf`
+- then, you simply specify which build arguments file should be used for the current build using the `-a / --build-args-file` option
+
