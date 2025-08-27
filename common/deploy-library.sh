@@ -38,7 +38,14 @@ function create_deploy_dir() {
 function generate_env_file() {
     ENV_FILE="${DEPLOY_DIR}/${ENV_FILENAME}"
     if [[ -e "$ENV_FILE" ]]; then
-        echo_if_verbose "'$ENV_FILE' already exists, not creating anything (in case you want to create a new one, delete the previous one, or specify new location using -d/-e options)."
+        echo_if_verbose "'$ENV_FILE' already exists, checking whether it contains all the variables from the template"
+        for var in $(cat $ENV_VARS_TEMPLATE | cut -d= -f1); do
+          grep --silent $var $ENV_FILE
+          if [ $? -ne 0 ]; then
+            echo 2>&1 "Variable '$var' is not present in your $ENV_FILE. Add it and re-run again."
+            exit 1
+          fi
+        done
     else
         cp "$ENV_VARS_TEMPLATE" "$ENV_FILE"
         sed -i 's|${PROFILE}|'${PROFILE}'|g' "$ENV_FILE"
