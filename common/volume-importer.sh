@@ -24,7 +24,7 @@ function echo_if_verbose() {
 function parse_options() {
     echo_if_verbose "Parsing the following options: $@"
 
-    local readonly OPTIONS="$(getopt -o hvc:t:p:m:d:e:r: --long help,verbose,container-name:,image-tag:,port:,--detach,deploy-dir:,env-file:,oci-runtime: -n 'deploy.sh' -- "$@")"
+    local OPTIONS="$(getopt -o hvc:t:p:m:d:e:r: --long help,verbose,container-name:,image-tag:,port:,--detach,deploy-dir:,env-file:,oci-runtime: -n 'deploy.sh' -- "$@")"
     eval set -- "$OPTIONS"
 
     HELP=false

@@ -78,7 +78,7 @@ function copy_files_to_mount() {
 }
 
 function run_compose_cmd() {
-    local readonly COMPOSE_CMD="$1"
+    local COMPOSE_CMD="$1"
 
     echo_if_verbose "Going to run a command: '$COMPOSE_CMD'"
     pushd "$DEPLOY_DIR"

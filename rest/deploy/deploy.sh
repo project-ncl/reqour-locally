@@ -1,6 +1,8 @@
 #!/bin/env bash
 
 readonly COMMONS_DIR="../../common"
+readonly TODOS_HUNTER="${COMMONS_DIR}/todos-hunter.sh"
+readonly VOLUME_IMPORTER="${COMMONS_DIR}/volume-importer.sh"
 readonly CONFIGURATIONS_PATH="mounts/configurations"
 readonly SECRETS_PATH="mounts/secrets"
 readonly CONFIGURATIONS_VOLUME="reqour-rest-configurations"
@@ -51,7 +53,7 @@ function show_usage() {
 }
 
 function parse_options() {
-    local readonly OPTIONS="$(getopt -o hvt:b:c:p:m:d:e:r:l: --long help,verbose,image-tag:,compose-backend:,container-name:,port:,detach:,deploy-dir:,env-file:,oci-runtime:,local-jar: -n 'deploy.sh' -- "$@")"
+    local OPTIONS="$(getopt -o hvt:b:c:p:m:d:e:r:l: --long help,verbose,image-tag:,compose-backend:,container-name:,port:,detach:,deploy-dir:,env-file:,oci-runtime:,local-jar: -n 'deploy.sh' -- "$@")"
     eval set -- "$OPTIONS"
 
     HELP=false
@@ -211,7 +213,6 @@ function generate_deployment_resources() {
 
 function are_todos_resolved() {
     echo_if_verbose "Checking whether all the TODOs are resolved..."
-    local readonly TODOS_HUNTER="${COMMONS_DIR}/todos-hunter.sh"
     eval "$TODOS_HUNTER $DEPLOY_DIR"
     return $?
 }
@@ -222,7 +223,6 @@ function create_volumes_if_not_exist() {
 }
 
 function import_into_volumes() {
-    readonly VOLUME_IMPORTER="${COMMONS_DIR}/volume-importer.sh"
     [[ "$VERBOSE" == true ]] && readonly verbose_flag=" -v" || readonly verbose_flag=""
 
     ${VOLUME_IMPORTER}${verbose_flag} $CONFIGURATIONS_VOLUME ${DEPLOY_DIR}/${CONFIGURATIONS_PATH}

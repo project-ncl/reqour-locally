@@ -1,6 +1,7 @@
 #!/bin/env bash
 
 readonly COMMONS_DIR="../../common"
+readonly TODOS_HUNTER="${COMMONS_DIR}/todos-hunter.sh"
 
 . "${COMMONS_DIR}/library.sh"
 . "${COMMONS_DIR}/build-library.sh"
@@ -31,7 +32,7 @@ function show_usage() {
 function parse_options() {
     echo_if_verbose "Parsing the following options: '$@'"
 
-    local readonly OPTIONS="$(getopt -o hvr:t:a:b: --long help,verbose,oci-runtime:,image-tag:,build-args-file:,build-dir: -n 'build.sh' -- "$@")"
+    local OPTIONS="$(getopt -o hvr:t:a:b: --long help,verbose,oci-runtime:,image-tag:,build-args-file:,build-dir: -n 'build.sh' -- "$@")"
     eval set -- "$OPTIONS"
 
     HELP=false
@@ -101,7 +102,6 @@ function parse_arguments() {
 }
 
 function main() {
-    local readonly TODOS_HUNTER="${COMMONS_DIR}/todos-hunter.sh"
     parse_options "$@"
     parse_arguments "$ARGUMENTS"
 
