@@ -1,6 +1,6 @@
 #!/bin/env bash
 
-readonly PARENT_IMAGE="pnc-rhel-8-reqour-image"
+readonly PARENT_IMAGE="quay.io\/rh-newcastle\/pnc-rhel-8-reqour"
 readonly COMMONS_DIR="../../common"
 
 . "${COMMONS_DIR}/library.sh"
